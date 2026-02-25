@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# ══════════════════════════════════════════════════════════════
+#  sesh-picker — Smart tmux session picker
+#
+#  Features:
+#    - Hides ephemeral auto-start sessions (_ephemeral_*)
+#    - Shows ● marker on current attached session
+#    - Ctrl+D kills sessions (protects current session)
+#    - Type a new name + Enter to create a session
+#    - Auto-kills ephemeral session when switching to a real one
+# ══════════════════════════════════════════════════════════════
+
+current=$(tmux display-message -p '#S')
+
+# List non-ephemeral sessions, mark the current one
+sessions=$(
+  tmux list-sessions -F '#S' 2>/dev/null \
+    | grep -v '^_ephemeral_' \
+    | while read -r s; do
+        if [ "$s" = "$current" ]; then
+          echo "● $s (attached)"
+        else
+          echo "  $s"
+        fi
+      done
+)
+
+selected=$(
+  echo "$sessions" \
+    | fzf --no-sort --ansi \
+        --header "  Ctrl+D = kill  │  type new name = create" \
+        --print-query \
+        --bind "ctrl-d:execute-silent(
+          name=\$(echo {} | sed 's/^[● ] *//;s/ (attached)//');
+          current=\$(tmux display-message -p '#S');
+          if [ \"\$name\" != \"\$current\" ]; then
+            tmux kill-session -t \"\$name\";
+          fi
+        )+reload(
+          current=\$(tmux display-message -p '#S');
+          tmux list-sessions -F '#S' | grep -v '^_ephemeral_' | while read -r s; do
+            if [ \"\$s\" = \"\$current\" ]; then
+              echo \"● \$s (attached)\";
+            else
+              echo \"  \$s\";
+            fi;
+          done
+        )" \
+    | tail -1
+)
+
+[ -z "$selected" ] && exit 0
+
+# Strip marker prefix
+selected=$(echo "$selected" | sed 's/^[● ] *//;s/ (attached)//')
+
+[ -z "$selected" ] && exit 0
+
+# Remember if we're leaving an ephemeral session
+leaving_ephemeral=""
+if [[ "$current" == _ephemeral_* ]]; then
+  leaving_ephemeral="$current"
+fi
+
+# If session exists, switch to it. Otherwise create it.
+if tmux has-session -t "=$selected" 2>/dev/null; then
+  tmux switch-client -t "$selected"
+else
+  tmux new-session -d -s "$selected"
+  tmux switch-client -t "$selected"
+fi
+
+# Kill the ephemeral session we left
+if [ -n "$leaving_ephemeral" ]; then
+  tmux kill-session -t "$leaving_ephemeral" 2>/dev/null
+fi
