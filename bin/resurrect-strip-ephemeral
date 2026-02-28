@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Strip _ephemeral_* sessions from tmux-resurrect save files
+# Called as a post-save hook with the save file path as $1
+
+save_file="$1"
+[ -z "$save_file" ] && exit 0
+[ -f "$save_file" ] && sed -i '/_ephemeral_/d' "$save_file"

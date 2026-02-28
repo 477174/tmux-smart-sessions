@@ -4,7 +4,7 @@ set -e
 # ══════════════════════════════════════════════════════════════
 #  tmux-smart-sessions — Installer
 #  Smart tmux session management with ephemeral shells,
-#  auto-cleanup, and a protected session picker.
+#  auto-cleanup, session persistence, and a protected picker.
 # ══════════════════════════════════════════════════════════════
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,11 +87,15 @@ if ! check_dep zoxide; then
   fi
 fi
 
-# ── Install sesh-picker ──────────────────────────────────────
-info "Installing sesh-picker..."
+# ── Install scripts ──────────────────────────────────────────
+info "Installing scripts to ~/.local/bin/..."
 mkdir -p "$HOME/.local/bin"
+
 cp "$SCRIPT_DIR/bin/sesh-picker" "$HOME/.local/bin/sesh-picker"
 chmod +x "$HOME/.local/bin/sesh-picker"
+
+cp "$SCRIPT_DIR/bin/resurrect-strip-ephemeral" "$HOME/.local/bin/resurrect-strip-ephemeral"
+chmod +x "$HOME/.local/bin/resurrect-strip-ephemeral"
 
 # Ensure ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
@@ -99,7 +103,17 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
   echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
-ok "sesh-picker installed to ~/.local/bin/"
+ok "sesh-picker and resurrect-strip-ephemeral installed to ~/.local/bin/"
+
+# ── Install TPM + plugins ───────────────────────────────────
+TPM_DIR="$HOME/.tmux/plugins/tpm"
+if [ ! -d "$TPM_DIR" ]; then
+  info "Installing TPM (Tmux Plugin Manager)..."
+  git clone https://github.com/tmux-plugins/tpm "$TPM_DIR"
+  ok "TPM installed"
+else
+  ok "TPM already installed"
+fi
 
 # ── Install tmux.conf ────────────────────────────────────────
 info "Setting up tmux.conf..."
@@ -116,6 +130,15 @@ if [ -f "$HOME/.tmux.conf" ]; then
 else
   cp "$SCRIPT_DIR/tmux.conf" "$HOME/.tmux.conf"
   ok "tmux.conf installed"
+fi
+
+# Install tmux plugins via TPM
+info "Installing tmux plugins (resurrect, continuum)..."
+if [ -x "$TPM_DIR/bin/install_plugins" ]; then
+  "$TPM_DIR/bin/install_plugins" >/dev/null 2>&1 || true
+  ok "Tmux plugins installed"
+else
+  warn "Run 'Ctrl+A I' inside tmux to install plugins"
 fi
 
 # ── Shell init snippet ───────────────────────────────────────
@@ -162,6 +185,12 @@ echo "    1. Open a new terminal (tmux starts automatically)"
 echo "    2. Press Ctrl+A f to open the session picker"
 echo "    3. Type a name + Enter to create a session"
 echo "    4. Ctrl+D to kill a session (current is protected)"
+echo ""
+echo "  Session persistence:"
+echo "    - Sessions auto-save every 15 minutes"
+echo "    - Saved sessions restore on first terminal after reboot"
+echo "    - Ephemeral sessions are stripped from save files"
+echo "    - Manual save: Ctrl+A Ctrl+S  |  Restore: Ctrl+A Ctrl+R"
 echo ""
 echo "  Reload tmux config:  Ctrl+A r"
 echo "══════════════════════════════════════════════════════════"
